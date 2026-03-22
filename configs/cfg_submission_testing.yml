@@ -1,0 +1,16 @@
+dataset_type: testing
+rollouts_dir: /scratch/henryliu_root/henryliu98/shared_data/sumobaseline/testing_rollouts
+submission_dir: /scratch/henryliu_root/henryliu98/shared_data/sumobaseline/testing_submissions
+log_dir: /home/erdao/SUMOBaseline/outputs/logs-testing-submissions
+
+metadata:
+    account_name: erdao@umich.edu
+    unique_method_name: SUMO
+    authors:
+        - Xintao Yan
+        - Erdao Liang
+        - Henry X. Liu
+    affiliation: Michigan Traffic Lab, University of Michigan
+    description: SUMO
+    method_link: None
+    num_model_parameters: ~200

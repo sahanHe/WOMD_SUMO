@@ -1,0 +1,9 @@
+matplotlib
+Shapely
+shapelysmooth==0.1.1
+tqdm
+transforms3d==0.4.1
+utm
+opencv-python
+torch
+deepmerge

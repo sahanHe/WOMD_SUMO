@@ -1,0 +1,31 @@
+wosac:
+    taskname: "1019-randomize-for-visualization"
+    dataset_type: validation
+    dataset_dir: /scratch/henryliu_root/henryliu98/shared_data/womd/validation/
+    sumo_dir: /scratch/henryliu_root/henryliu98/shared_data/sumo/validation
+    output_dir: /home/erdao/SUMOBaseline/outputs/experiments/
+
+simulation:
+
+    gui: False
+    verbose: False
+    save_vis: False
+    video_base_dir: /home/erdao/SUMOBaseline/outputs/videos-visualization
+
+    offroad_mapping: True
+    sumo_oracle_parameters:
+        agent_speedfactor_std: 0.1
+        vehicle_min_speedfactor: 0.75
+        pedestrian_min_speedfactor: 0.4
+        treat_ped_as_vehicle: True
+        randomize_simplemove: False
+        acceleration_std: 0.2
+        deceleration_mean: 2.5
+        deceleration_std: 0.2
+        outofbound_lanecenter_threshold: 10
+        outofbound_roadedge_threshold: 5
+        sideroad_probability: 0.1
+    
+    offroad_mapping_parameters:
+        distance_algorithm: 2d
+        ignore_ped: True
