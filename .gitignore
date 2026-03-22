@@ -1,0 +1,5 @@
+unsignalized_scenarios*
+waymo_open_dataset*
+/sim_out/
+/sim_out_new/
+/outputs*/
