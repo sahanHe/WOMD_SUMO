@@ -20,13 +20,13 @@ from .geometry import (
     degree2rad,
 )
 from .agents import *
-from .base import SUMOBaselineBase
+from .baselog import SUMOBaselineBaseLog
 from .veh_params import *
 from deepmerge import always_merger
 from src.static_context.utils import Pt
 
 
-class SUMOBaselineLog(SUMOBaselineBase):
+class SUMOBaselineLog(SUMOBaselineBaseLog):
     """
     This class defines sumo_oracle() method
 
@@ -59,12 +59,11 @@ class SUMOBaselineLog(SUMOBaselineBase):
     def __init__(
         self,
         scenario,
-        sumo_cfg_path: Union[str, Path],
         sumo_net_path: Union[str, Path],
         sim_wallstep: int = 91,
         history_length: int = 91,
     ) -> None:
-        super().__init__(scenario, sumo_cfg_path, sumo_net_path, sim_wallstep, history_length)
+        super().__init__(scenario, sumo_net_path, sim_wallstep, history_length)
 
         self.default_parameters = {
             "agent_speedfactor_std": 0.15,
@@ -81,6 +80,108 @@ class SUMOBaselineLog(SUMOBaselineBase):
             "sideroad_probability": 0.1,
         }
 
+        self.time_buff_sumo_tls: list[list[TrafficLightHead]] = []
+        self.stationary_agent_ids: list[str] = []
+        self.outofbound_agent_ids: list[str] = []
+        self.offroad_agent_ids: list[str] = []
+        self.immobile_agent_ids: list[str] = []
+    
+    def set_enviorenment_data(self, parameters: dict = {}) -> dict:
+
+        self.route_counter = 0
+        self.parameters: dict = always_merger.merge(self.default_parameters, parameters)
+        # ------------------ 2. Setup vehicles & tls
+        self.stationary_agent_ids: list[str] = [
+            v_id for v_id in self.agent_attrs.keys() if self._is_agent_stationary(self.agent_states[v_id])
+        ]
+        self.outofbound_agent_ids: list[str] = [
+            v_id for v_id in self.agent_attrs.keys() if self._is_agent_outofbound(self.agent_states[v_id], consider_roadedge=False)
+        ]
+        self.immobile_agent_ids: list[str] = list(set(self.stationary_agent_ids).union(self.outofbound_agent_ids))
+
+        self.offroad_agent_ids = set(self.agent_attrs.keys())
+        agent_attrs = copy.deepcopy(self.agent_attrs)
+        agent_states = copy.deepcopy(self.agent_states)
+
+
+        return agent_attrs, agent_states
+    
+
+    def place_agents(
+        self, agent_attrs, agent_states, t: int
+    ) -> tuple[dict[str, AgentAttr], dict[str, list[AgentState]], list[list[TrafficLightHead]]]:
+        
+
+        
+
+
+
+        print(f"-----------------{t}-------------------")
+
+        # store the state of vehicles for a single time step; updated every time
+        self.control_state_dict: dict[str, int] = {v_id: None for v_id in agent_attrs.keys()}
+
+            # [explicit command] for vehicles dropped in the last step, we try to add it back
+        for agent_id in self.offroad_agent_ids.difference(self.outofbound_agent_ids):
+            if agent_states[agent_id][0] is None:
+                continue
+            if agent_attrs[agent_id].type == AgentType.VEHICLE or self.parameters["treat_ped_as_vehicle"]:
+                self.place_a_vehicle(agent_attrs[agent_id], agent_states[agent_id], t)
+            else:
+                self.place_a_pedestrian(agent_attrs[agent_id], agent_states[agent_id])
+
+            # [explicit command] for stationary vehicles
+            onroad_agent_ids = set(agent_attrs.keys()) - self.offroad_agent_ids
+            immobile_and_onroad_agent_ids = onroad_agent_ids.intersection(self.immobile_agent_ids)
+            for agent_id in immobile_and_onroad_agent_ids:
+                self.control_immobile_agent(agent_attrs[agent_id], agent_states[agent_id])
+
+            # [explicit command] for vehicles at intersection
+            for node in self.sumonet.getNodes():
+                node_type = node.getType()
+                if node_type in ["traffic_light", "traffic_light_right_on_red"]:
+                    self.control_veh_behavior_at_intersection(node)
+
+            # get simulation result
+            # traci.simulationStep()
+            onroad_agent_states = self.get_onroad_agents(agent_states, self.offroad_agent_ids)
+            self.offroad_agent_ids = set(agent_attrs.keys()) - set(onroad_agent_states.keys())
+
+            # [state obtain] for successfully simulated (onroad) agents, we store whatever is obtained
+            for agent_id, agent_state in onroad_agent_states.items():  # (Q1 + Q2)
+                agent_states[agent_id].append(agent_state)
+
+            # [state obtain] for unsuccessfully simulated (offroad) agents, we apply a simple control
+            for agent_id in self.offroad_agent_ids:
+                agent_state = self.predict_agent_simple_movement(
+                    agent_attrs[agent_id],
+                    agent_states[agent_id],
+                    random=self.parameters["randomize_simplemove"],
+                )
+                if agent_id in self.immobile_agent_ids:  # (Q3)
+                    agent_state.control_state = AgentControlState.SIMPLE_STATIONARY
+                else:  # (Q4)
+                    agent_state.control_state = AgentControlState.SIMPLE_MOVE
+                agent_states[agent_id].append(agent_state)
+
+            # [state obtain] Get the current traffic light states
+            tls_list = self.get_tls_list_from_SUMO()
+            self.time_buff_sumo_tls.append(tls_list)
+
+            # for veh_id in traci.vehicle.getIDList():
+            #     print(f"Vehicle ID: {veh_id}")
+            #     print(f"Vehicle ID: {veh_id}, Position: {traci.vehicle.getPosition(veh_id)}")
+            #     print(f"Vehicle ID: {veh_id}, Lane ID: {traci.vehicle.getLaneID(veh_id)}")
+            #     print(f"Vehicle ID: {veh_id}, Speed: {traci.vehicle.getSpeed(veh_id)}")
+            #     print(f"Vehicle ID: {veh_id}, Heading: {traci.vehicle.getAngle(veh_id)}")
+            #     print(f"Vehicle ID: {veh_id}, Acceleration: {traci.vehicle.getAcceleration(veh_id)}")
+
+
+        
+        return agent_attrs, agent_states, self.time_buff_sumo_tls, self.immobile_agent_ids
+
+
+
     def sumo_oracle(
         self, parameters: dict = {}, gui: bool = False
     ) -> tuple[dict[str, AgentAttr], dict[str, list[AgentState]], list[list[TrafficLightHead]]]:
@@ -89,14 +190,7 @@ class SUMOBaselineLog(SUMOBaselineBase):
         self.parameters: dict = always_merger.merge(self.default_parameters, parameters)
 
         # ------------------ 1. Start SUMO simulation
-        sumoCmd = [
-            "sumo-gui",
-            "-c",
-            str(self.sumo_cfg_path),
-            "--lateral-resolution",
-            str(self.parameters["lateral_resolution"]),
-        ]
-        traci.start(sumoCmd)
+
 
         # ------------------ 2. Setup vehicles & tls
         agent_attrs = copy.deepcopy(self.agent_attrs)
@@ -176,7 +270,7 @@ class SUMOBaselineLog(SUMOBaselineBase):
                 print(f"Vehicle ID: {veh_id}, Acceleration: {traci.vehicle.getAcceleration(veh_id)}")
 
 
-        traci.close()
+        
         return agent_attrs, agent_states, time_buff_sumo_tls, self.immobile_agent_ids
 
     """
@@ -186,7 +280,7 @@ class SUMOBaselineLog(SUMOBaselineBase):
     def _is_agent_stationary(self, agent_states: list[AgentState]) -> bool:
 
         # criteria 1: speed has been always 0
-        is_speed_0 = self._is_speed_0(agent_states, threshold=0.2)
+        is_speed_0 = self._is_speed_0(agent_states, threshold=0.2) # True if average speed of the agent in history is below Threshold
         agent_center_pos = np.array(agent_states[-1].get_position())
         # criteria 2: it is close to roadedge
         is_close_to_road_edge = self._min_map_feature_distance(self.episode, agent_center_pos, [4]) < 2.3
@@ -210,13 +304,15 @@ class SUMOBaselineLog(SUMOBaselineBase):
         else:
             return is_very_far_from_lanecenter
 
+
+    # Compute the mean of agent's speed history and check if it is below a certain threshold
     @staticmethod
     def _is_speed_0(agent_states: list[AgentState], threshold: float = 0.5) -> bool:
         agent_history_speed: list[float] = []
         for state in agent_states:
             if state != None:
                 agent_history_speed.append(state.speed)
-        is_speed_0 = not any(speed > threshold for speed in agent_history_speed)
+        # is_speed_0 = not any(speed > threshold for speed in agent_history_speed)
         is_speed_0 = np.mean(agent_history_speed) <= threshold
         return is_speed_0
 

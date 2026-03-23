@@ -35,27 +35,43 @@ for i, scenario in enumerate(scenario_list):
         scenario_assigned = scenario
 
 womd_scenario_path = f"/home/sahan/Desktop/PhD/waymo_motion_training/uncompressed_scenario_validation_validation.tfrecord-00000-of-00150"
-base_dir = Path(f"/home/sahan/Desktop/PhD/SUMO-Benchmark/outputs/")
+base_dir = Path(f"/home/sahan/Desktop/PhD/WOMD_SUMO/outputs/")
 
 sumo_cfg_path = Path(base_dir / f"{scenario_id}/{scenario_id}.sumocfg")
 sumo_net_path = Path(base_dir / f"{scenario_id}/{scenario_id}.net.xml")
 
 
-simulator = SUMOBaselineLog(scenario_assigned, sumo_cfg_path, sumo_net_path, sim_wallstep=91)
-agent_attrs, agent_states, one_sim_time_buff_agents, one_sim_time_buff_tls = simulator.run_simulation(
-    offroad_mapping=True,
-    gui=False,
-    sumo_oracle_parameters={}
-)
+sumoCmd = [
+    "sumo-gui",
+    "-c",
+    str(sumo_cfg_path),
+    "--lateral-resolution",
+    str(0.2),
+]
+traci.start(sumoCmd)
 
-visualizer = SUMOBaselineVisualizer(scenario_assigned, shaded=True, types_to_draw="withedge", simplify_agent_color=False)
-visualizer.save_map(base_dir="sim_out_new/",) # save the map picture
-visualizer.save_video(
-    one_sim_time_buff_agents,
-    one_sim_time_buff_tls,
-    base_dir="sim_out_new/",
-    video_name=f"{scenario_id}.mp4",
-    with_ground_truth=True
-) # save the simulation as a video
+simulator = SUMOBaselineLog(scenario_assigned, sumo_net_path, sim_wallstep=91)
+# agent_attrs, agent_states, one_sim_time_buff_agents, one_sim_time_buff_tls = simulator.run_simulation(
+#     offroad_mapping=True,
+#     gui=False,
+#     sumo_oracle_parameters={}
+# )
+agent_attrs, agent_states = simulator.set_enviorenment_data(parameters={})
+
+for r in range(91):
+    agent_attrs, agent_states, one_sim_time_buff_agents, one_sim_time_buff_tls = simulator.place_agents(agent_attrs, agent_states, r)
+    traci.simulationStep()
+
+traci.close()
+
+# visualizer = SUMOBaselineVisualizer(scenario_assigned, shaded=True, types_to_draw="withedge", simplify_agent_color=False)
+# visualizer.save_map(base_dir="sim_out_new/",) # save the map picture
+# visualizer.save_video(
+#     one_sim_time_buff_agents,
+#     one_sim_time_buff_tls,
+#     base_dir="sim_out_new/",
+#     video_name=f"{scenario_id}.mp4",
+#     with_ground_truth=True
+# ) # save the simulation as a video
                                                    
 
